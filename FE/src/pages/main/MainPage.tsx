@@ -1,0 +1,133 @@
+import Header from '@/components/common/Header.tsx';
+import GroupImageList from '@/pages/main/components/Group/GroupImageList';
+import MemberChipList from '@/pages/main/components/Chip/MemberChipList';
+import PhotoCardList from '@/pages/main/components/PhotoCard/PhotoCardList';
+import AlbumChip from '@/pages/main/components/Album/AlbumChip';
+import AlbumModal from '@/pages/main/components/Album/AlbumModal';
+import { useState, useEffect } from 'react';
+import { useLikedGroups } from '@/hooks/user/query/useLike';
+import { SelectedMemberText, MainContainer, FilterContainer } from './MainPageStyle';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useMembers } from '@/hooks/artist/query/useMembers';
+import { Group } from '@/types/group';
+import { UserLikedGroup } from '@/types/user';
+
+const MainPage = () => {
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [selectedMember, setSelectedMember] = useState<number | null>(null);
+  const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
+  const [selectedAllGroup, setSelectedAllGroup] = useState<number | null>(null);
+  const [selectedGroupData, setSelectedGroupData] = useState<Group | null>(null);
+  const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false);
+
+  // 관심 그룹 불러오기
+  const { data: likedGroups } = useLikedGroups();
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 로그인 직후, 관심 그룹이 있으면 첫 번재 그룹 선택
+  useEffect(() => {
+    if (likedGroups?.result?.length && selectedGroupId === null && selectedAllGroup === null) {
+      const first = (likedGroups.result as UserLikedGroup[])[0];
+      setSelectedGroupId(first.groupId);
+      setSelectedGroupData({
+        groupId: first.groupId,
+        groupNameKo: first.groupNameKo,
+        groupNameEn: first.groupNameEn,
+        groupImageUrl: first.groupImageUrl || '',
+        members: null,
+        interest: true,
+      });
+    }
+  }, [likedGroups, selectedGroupId, selectedAllGroup]);
+
+  // 선택된 그룹의 ID로 데이터 조회
+  const groupId = selectedAllGroup || selectedGroupId || 0;
+  const { data: membersData } = useMembers(groupId);
+
+  // 그룹이 변경될 때마다 해당 그룹의 첫 번째 관심 멤버를 선택
+  useEffect(() => {
+    if (membersData?.result && selectedGroupId !== null) {
+      const interestMembers = membersData.result.filter((member) => member.interest);
+      if (interestMembers.length > 0) {
+        setSelectedMember(interestMembers[0].memberId);
+      } else {
+        setSelectedMember(null);
+      }
+    }
+  }, [selectedGroupId, membersData]);
+
+  // location.state에서 선택된 그룹 정보를 가져옴
+  useEffect(() => {
+    if (location.state?.selectedAllGroup && location.state?.selectedGroupData) {
+      setSelectedAllGroup(location.state.selectedAllGroup);
+      setSelectedGroupData(location.state.selectedGroupData);
+      // 전체 그룹 선택 시 선택된 멤버 초기화
+      setSelectedMember(null);
+    }
+  }, [location.state]);
+
+  const handleAlbumSelect = (albumId: number | null) => {
+    setSelectedAlbumId(albumId);
+    setIsAlbumModalOpen(false);
+  };
+
+  const handleEditGroup = () => {
+    navigate('/myGroupEdit', { state: { from: '/main' } });
+  };
+
+  return (
+    <>
+      <Header type="main" />
+      <MainContainer>
+        <GroupImageList
+          selectedId={selectedGroupId}
+          onSelectGroup={setSelectedGroupId}
+          selectedAllGroup={selectedAllGroup}
+          selectedGroupData={selectedGroupData}
+          onSelectAllGroup={setSelectedAllGroup}
+          onEditGroup={handleEditGroup}
+          setSelectedGroupData={setSelectedGroupData}
+        />
+        <MemberChipList
+          groupId={groupId}
+          selectedMember={selectedMember}
+          onSelectMember={setSelectedMember}
+        />
+        <FilterContainer>
+          {selectedMember && membersData?.result ? (
+            <SelectedMemberText>
+              <span>
+                {membersData.result.find((m) => m.memberId === selectedMember)?.name || ''}
+              </span>
+              의 포토카드
+            </SelectedMemberText>
+          ) : (
+            <SelectedMemberText>
+              <span>{selectedGroupData?.groupNameKo}</span>의 포토카드
+            </SelectedMemberText>
+          )}
+          <AlbumChip
+            isSelected={selectedAlbumId !== null}
+            onClick={() => setIsAlbumModalOpen(true)}
+          />
+        </FilterContainer>
+        <PhotoCardList
+          selectedMember={selectedMember}
+          selectedAlbumId={selectedAlbumId}
+          groupId={groupId}
+        />
+        <AlbumModal
+          isOpen={isAlbumModalOpen}
+          onClose={() => setIsAlbumModalOpen(false)}
+          onSelectAlbum={handleAlbumSelect}
+          groupId={groupId}
+          selectedAlbumId={selectedAlbumId}
+        />
+      </MainContainer>
+    </>
+  );
+};
+
+export default MainPage;
